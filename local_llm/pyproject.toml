@@ -1,0 +1,13 @@
+[project]
+name = "tutor-agent"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.117.1",
+    "mcp>=1.15.0",
+    "ollama>=0.6.0",
+    "openai-agents>=0.3.2",
+    "pydantic>=2.11.9",
+]
