@@ -1,0 +1,10 @@
+[project]
+name = "mcp-tools"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.15.0",
+    "pypdf2>=3.0.1",
+]

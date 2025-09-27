@@ -1,0 +1,44 @@
+---
+alwaysApply: true
+
+
+# Project guardrails
+- Python 3.12+ and uv for project + dependency management.
+- Use OpenAI Agents SDK (Python) for agent logic.
+- Scaffold FastAPI with /healthz and /chat endpoints.
+- Use .env with OPENAI_API_KEY; never hardcode secrets.
+- Add tests with pytest; mock network calls by default (offline CI).
+- Enforce type hints and static checks (ruff, mypy‑friendly code).
+- Prefer small, composable modules; document public modules.
+- Use uv‑based multi‑stage Docker; minimize runtime image size.
+
+# File hygiene
+- README.md with exact run commands and curl examples.
+- .env.sample, .gitignore, .dockerignore.
+- *docs/adr* folder with ADR template and incremental ADRs.
+- *.github/pull_request_template.md* requiring tests + ADR link when interfaces/deps change.
+
+# Agent design defaults
+- Start with CustomerAgent; add ResearchAgent with handoffs.
+- Sessions for chat continuity.
+- Two function tools minimum (calculator, datetime).
+- Guardrail via Pydantic output type.
+- Streaming via SSE; WebSocket optional later.
+
+# Quality bar (policy)
+- Code must run end‑to‑end after uv sync.
+- Tests first (TDD): Red → Green → Refactor.
+- CI requires: ruff, pytest, coverage ≥ 80%, Docker build.
+- *PR gate:* small scope, tests included, ADR linked if public API or deps change. No green, no merge.
+
+
+
+
+# Project bootstrap
+uv venv && source .venv/bin/activate
+uv init --python 3.12
+uv add fastapi "uvicorn[standard]" pydantic python-dotenv httpx pytest ruff openai-agents
+mkdir -p app/{agents,guards} tests docs/{specs,adr,prompts,pr,diagrams} .github/workflows evals/{behavior,datasets,rubrics}
+echo "GEMINI_API_KEY=\nMODEL=gpt-5" > .env.sample
+
+---
