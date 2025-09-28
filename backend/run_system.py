@@ -9,14 +9,15 @@ import os
 import sys
 from pathlib import Path
 
-# Add the Haka_Agents directory to the path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'Haka_Agents'))
+# Add the companion_agents directory to the path
+sys.path.append(os.path.join(os.path.dirname(__file__), 'companion_agents'))
 
 from main_orchestrator import main
 
 if __name__ == "__main__":
     print("🎓 AI Tutor System Starting...")
-    print("Make sure MCP server is running: python Mcp_Tools/main.py")
+    print("📝 Note: MCP server is optional - system will work without it")
+    print("🔧 To enable full features, run: python Mcp_Tools/main.py")
     print("=" * 50)
     
     try:
