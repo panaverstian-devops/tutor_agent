@@ -1,0 +1,104 @@
+{
+  "pack_info": {
+    "pack_id": "english_ch002",
+    "subject": "English",
+    "chapter_number": 2,
+    "title": "English - Chapter 2",
+    "created_date": "2025-09-28T07:07:54.351328",
+    "expires_date": "2025-09-29T07:07:54.351337",
+    "student_level": "beginner",
+    "status": "ready",
+    "source": "MCP_Book_Content"
+  },
+  "study_material": {
+    "title": "English - Chapter 2",
+    "overview": "Chapter 2 of English covering essential concepts.",
+    "key_concepts": [
+      "Fundamental concepts and principles",
+      "Key theories and methods",
+      "Practical applications",
+      "Problem-solving techniques",
+      "Advanced topics and extensions"
+    ],
+    "detailed_content": "I am unable to access the content of Chapter 2 from the English Grade 7 book at the moment. The PDF file seems to be missing. If you can provide the PDF file or any other specific resources, I can help you extract the content.",
+    "examples": [
+      "Real-world application example",
+      "Step-by-step problem solving",
+      "Practical implementation case"
+    ],
+    "summary": "I am unable to access the content of Chapter 2 from the English Grade 7 book at the moment. The PDF file seems to be missing. If you can provide the PDF file or any other specific resources, I can help you extract the content."
+  },
+  "assessment": {
+    "quiz_title": "English Chapter 2 Quiz",
+    "questions": [
+      {
+        "id": 1,
+        "question": "What are the key concepts covered in English Chapter 2?",
+        "options": [
+          "Grammar and Vocabulary",
+          "Fundamental concepts and principles",
+          "History of English Literature",
+          "Mathematical Equations"
+        ],
+        "correct_answer": 1,
+        "explanation": "English Chapter 2 covers fundamental concepts and principles related to the language."
+      },
+      {
+        "id": 2,
+        "question": "What are the practical applications discussed in English Chapter 2?",
+        "options": [
+          "Cooking Techniques",
+          "Problem-solving techniques",
+          "Art History",
+          "Physics Experiments"
+        ],
+        "correct_answer": 1,
+        "explanation": "English Chapter 2 discusses practical applications of the language through problem-solving techniques."
+      },
+      {
+        "id": 3,
+        "question": "What is the focus of the key theories and methods in English Chapter 2?",
+        "options": [
+          "Biology Concepts",
+          "Key theories and methods related to English language",
+          "Music Theory",
+          "Geography Facts"
+        ],
+        "correct_answer": 1,
+        "explanation": "Key theories and methods related to the English language are the focus of Chapter 2."
+      },
+      {
+        "id": 4,
+        "question": "What are the advanced topics and extensions mentioned in English Chapter 2?",
+        "options": [
+          "Basic Arithmetic",
+          "Advanced topics in Chemistry",
+          "Advanced topics and extensions related to English language",
+          "Modern Art Movements"
+        ],
+        "correct_answer": 2,
+        "explanation": "Chapter 2 covers advanced topics and extensions related to the English language."
+      },
+      {
+        "id": 5,
+        "question": "What are the problem-solving techniques discussed in English Chapter 2?",
+        "options": [
+          "Solving Sudoku Puzzles",
+          "Solving Crossword Puzzles",
+          "Problem-solving techniques related to the English language",
+          "Playing Video Games"
+        ],
+        "correct_answer": 2,
+        "explanation": "Chapter 2 explores problem-solving techniques specifically related to the English language."
+      }
+    ],
+    "total_questions": 5,
+    "passing_score": 70
+  },
+  "progress": {
+    "completed": false,
+    "score": null,
+    "time_spent": 0,
+    "last_accessed": null
+  }
+}

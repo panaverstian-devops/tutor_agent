@@ -8,19 +8,19 @@ from agents import Agent, AsyncOpenAI, OpenAIChatCompletionsModel, Runner, Model
 load_dotenv()
 
 # Disable extra tracing/logging for cleaner output
-set_tracing_disabled(True)
+# set_tracing_disabled(True)
 
-# Create API provider
-Provider = AsyncOpenAI(
-    api_key=os.getenv("GEMINI_API_KEY"),
-    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-)
+# # Create API provider
+# Provider = AsyncOpenAI(
+#     api_key=os.getenv("GEMINI_API_KEY"),
+#     base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+# )
 
-# Set up the chat completion model
-model = OpenAIChatCompletionsModel(
-    model="gemini-2.0-flash",
-    openai_client=Provider,
-)
+# # Set up the chat completion model
+# model = OpenAIChatCompletionsModel(
+#     model="gemini-2.0-flash",
+#     openai_client=Provider,
+# )
 
 # Import feedback prompt
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -31,7 +31,7 @@ def create_feedback_agent():
     return Agent(
         name="FeedbackAgent",
         instructions=Feedback_Agent_Prompt,
-        model=model,
+        model=None,  # Will be set by orchestrator
         model_settings=ModelSettings(temperature=0.7),
     )
 

@@ -63,7 +63,7 @@ def create_tutor_agent_with_tools():
     tutor_agent = Agent(
         name="TutorAgent",
         instructions=Tutor_Agent_Prompt,
-        model=model,
+        model=None,  # Will be set by orchestrator
         model_settings=ModelSettings(temperature=0.7),
         tools=[assessment_tool],
     )

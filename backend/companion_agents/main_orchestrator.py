@@ -4,6 +4,7 @@ import sys
 import json
 import time
 import urllib.request
+import signal
 from dataclasses import dataclass
 from dotenv import load_dotenv, find_dotenv
 from agents import Agent, AsyncOpenAI, OpenAIChatCompletionsModel, Runner, ModelSettings, SQLiteSession, set_tracing_disabled, set_tracing_export_api_key, trace
@@ -14,10 +15,17 @@ from ollama import AsyncClient
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import all agents
-from triage_agent import Agent as TriageAgent
+from triage_agent import create_triage_agent
 from tutor_agent import create_tutor_agent_with_tools
 from feedback_agent import create_feedback_agent
 from safety_agent import create_safety_agent, check_content_safety
+
+# Import learning pack system
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from learning_pack_generator import LearningPackGenerator
+from enhanced_learning_pack_generator import EnhancedLearningPackGenerator
+from offline_learning_agent import OfflineLearningAgent
 
 # Load environment variables
 _ = load_dotenv(find_dotenv())
@@ -263,7 +271,6 @@ class HybridAgent:
                     openai_client=self.openai_client
                 )
                 self.use_openai = True
-                print("🔄 Internet restored - switching back to OpenAI")
             except Exception:
                 # OpenAI still not available, continue with Ollama
                 pass
@@ -277,15 +284,11 @@ class HybridAgent:
                     temperature = 0.3
                     max_tokens = 150
                     top_p = 0.3
-                    print(f"🌐 Network: Slow ({speed_mbps:.1f} Mbps) - OpenAI Degrade mode: temp={temperature}, tokens={max_tokens}")
-                    print("📝 Mode: Concise responses, to-the-point answers")
                 else:
                     # Good network - full quality
                     temperature = 0.7
                     max_tokens = 4096
                     top_p = 1.0
-                    print(f"🌐 Network: Good ({speed_mbps:.1f} Mbps) - OpenAI Full quality mode")
-                    print("📝 Mode: Detailed responses, comprehensive explanations")
                 
                 # Try OpenAI with appropriate settings and streaming
                 full_response = ""
@@ -308,18 +311,11 @@ class HybridAgent:
                 return full_response
                 
             except Exception as e:
-                print(f"⚠️ OpenAI API error: {e}")
-                print("🔄 Switching to Ollama local model")
+                # OpenAI API error, switching to Ollama
                 self.use_openai = False
                 # Fall through to Ollama
         
         # Use Ollama when offline or low network (no degrade mode for Ollama)
-        if speed_mbps == 0.0:
-            print(f"🌐 Network: Offline (0.0 Mbps) - Using Ollama")
-            print("📝 Mode: Local processing, no internet required")
-        else:
-            print(f"🌐 Network: Low ({speed_mbps:.1f} Mbps) - Using Ollama with 5000 tokens, temp=0.7")
-            print("📝 Mode: Local processing, high-quality responses")
         
         response = await self.ollama_agent.chat(user_input, temperature=0.7, max_tokens=5000)
         # Sync memory back from Ollama
@@ -358,6 +354,9 @@ else:
         openai_client=Provider,
     )
 
+# Make model available globally
+global_model = model
+
 class MultiAgentOrchestrator:
     """Orchestrates the multi-agent tutoring system with hybrid OpenAI/Ollama fallback."""
     
@@ -373,62 +372,79 @@ class MultiAgentOrchestrator:
         self.feedback_agent = create_feedback_agent()
         self.safety_agent = create_safety_agent()
         
-        # Set up MCP servers
-        self._setup_mcp_servers()
+        # Disable MCP servers to avoid ID conflicts
+        self.mcp_servers = []
+        print("⚠️ MCP servers disabled to avoid ID conflicts")
+        
+        # Initialize learning pack system
+        self.learning_pack_generator = EnhancedLearningPackGenerator()
+        self.offline_agent = None
+        self.current_chapter = 1
+        self.current_subject = "Mathematics"
     
     def _create_triage_agent(self):
         """Create the Triage Agent with adaptive settings"""
-        from PROMPTS.triage_prompt import Triage_Agent_Prompt
-        
         # Get current network status for adaptive settings (force check)
         speed_mbps, is_degrade = self.hybrid_agent.bandwidth_monitor.get_network_status(force_check=True)
         adaptive_settings = AdaptiveModelSettings.create_for_network_condition(speed_mbps)
         
-        return Agent(
-            name="Olivia",
-            instructions=Triage_Agent_Prompt,
-            model=model,
-            model_settings=ModelSettings(
-                temperature=adaptive_settings.temperature,
-                max_tokens=adaptive_settings.max_tokens,
-                top_p=adaptive_settings.top_p
-            ),
+        # Create triage agent using the imported function
+        triage_agent = create_triage_agent()
+        
+        # Update the model to use the global model
+        triage_agent.model = global_model
+        
+        # Apply adaptive settings
+        triage_agent.model_settings = ModelSettings(
+            temperature=adaptive_settings.temperature,
+            max_tokens=adaptive_settings.max_tokens,
+            top_p=adaptive_settings.top_p
         )
+        
+        return triage_agent
     
     def _setup_mcp_servers(self):
         """Set up MCP servers for the tutor agent"""
         self.mcp_servers = []
         
-        # Tavily MCP for web search
+        # Tavily MCP for web search (optional)
         if TAVILY_API_KEY:
-            tavily_mcp_params = {
-                "url": TAVILY_SERVER,
-                "timeout": 10,
+            try:
+                tavily_mcp_params = {
+                    "url": TAVILY_SERVER,
+                    "timeout": 5,
+                }
+                
+                self.tavily_server = MCPServerStreamableHttp(
+                    name="TavilySearchToolbox",
+                    params=tavily_mcp_params,
+                    cache_tools_list=False,  # Disable caching to avoid ID conflicts
+                    max_retry_attempts=1,
+                )
+                self.mcp_servers.append(self.tavily_server)
+                print("✅ Tavily MCP server configured")
+            except Exception as e:
+                print(f"⚠️ Tavily MCP setup failed: {e}")
+        
+        # Local MCP for student data and content (optional)
+        try:
+            local_mcp_params = {
+                "url": LOCAL_MCP_SERVER_URL,
+                "timeout": 5,
             }
             
-            self.tavily_server = MCPServerStreamableHttp(
-                name="TavilySearchToolbox",
-                params=tavily_mcp_params,
-                cache_tools_list=True,
-                max_retry_attempts=3,
+            self.local_server = MCPServerStreamableHttp(
+                name="StudentDataToolbox",
+                params=local_mcp_params,
+                cache_tools_list=False,  # Disable caching to avoid ID conflicts
+                max_retry_attempts=1,
             )
-            self.mcp_servers.append(self.tavily_server)
+            self.mcp_servers.append(self.local_server)
+            print("✅ Local MCP server configured")
+        except Exception as e:
+            print(f"⚠️ Local MCP setup failed: {e}")
         
-        # Local MCP for student data and content
-        local_mcp_params = {
-            "url": LOCAL_MCP_SERVER_URL,
-            "timeout": 10,
-        }
-        
-        self.local_server = MCPServerStreamableHttp(
-            name="StudentDataToolbox",
-            params=local_mcp_params,
-            cache_tools_list=True,
-            max_retry_attempts=3,
-        )
-        self.mcp_servers.append(self.local_server)
-        
-        # Add all MCP servers to tutor agent
+        # Add all MCP servers to tutor agent (will be connected later)
         self.tutor_agent.mcp_servers = self.mcp_servers
     
     async def get_hybrid_response(self, user_input: str, agent_name: str = "Agent"):
@@ -441,39 +457,159 @@ class MultiAgentOrchestrator:
             print(f"⚠️ Hybrid system error: {e}")
             return "I apologize, but I'm experiencing technical difficulties. Please try again."
     
+    async def generate_learning_pack(self, subject: str = None, chapter: int = None, user_input: str = None):
+        """Generate enhanced learning pack for next day's study using MCP tools"""
+        
+        # Parse user input for subject and chapter if provided
+        if user_input:
+            user_input_lower = user_input.lower()
+            if "english" in user_input_lower:
+                subject = "English"
+            elif "math" in user_input_lower or "mathematics" in user_input_lower:
+                subject = "Mathematics"
+            elif "science" in user_input_lower:
+                subject = "Science"
+            elif "history" in user_input_lower:
+                subject = "History"
+            
+            # Extract chapter number
+            import re
+            chapter_match = re.search(r'chap(?:ter)?\s*(\d+)', user_input_lower)
+            if chapter_match:
+                chapter = int(chapter_match.group(1))
+        
+        if not subject:
+            subject = self.current_subject
+        if not chapter:
+            chapter = self.current_chapter
+        
+        print(f"📚 Generating enhanced learning pack for {subject} - Chapter {chapter}")
+        print("🔍 Using MCP tools to extract book content...")
+        
+        try:
+            learning_pack = await self.learning_pack_generator.generate_enhanced_learning_pack(
+                subject=subject,
+                chapter_number=chapter,
+                student_level="beginner"
+            )
+            
+            # Save the learning pack
+            file_path = self.learning_pack_generator.save_learning_pack(learning_pack)
+            
+            if file_path:
+                print(f"✅ Enhanced learning pack generated successfully!")
+                print(f"📁 File: {file_path}")
+                print(f"📖 Subject: {subject}")
+                print(f"📝 Chapter: {chapter}")
+                print(f"📚 Source: {learning_pack['pack_info']['source']}")
+                print(f"❓ Quiz Questions: {learning_pack['assessment']['total_questions']}")
+                return file_path
+            else:
+                print("❌ Failed to save learning pack")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Error generating learning pack: {e}")
+            return None
+    
+    def start_offline_learning(self, learning_pack_path: str = None):
+        """Start offline learning session"""
+        if not learning_pack_path:
+            # Use the main learning_pack.json file
+            learning_pack_path = "/Users/mac/tutor_agent/backend/learning_pack.json"
+        
+        self.offline_agent = OfflineLearningAgent(learning_pack_path)
+        
+        if self.offline_agent.learning_pack:
+            print("🔄 Starting offline learning session...")
+            return self.offline_agent.start_study_session()
+        else:
+            return "❌ No learning pack found. Please generate one first using 'generate_pack' command."
+    
+    def handle_offline_command(self, user_input: str):
+        """Handle commands for offline learning"""
+        if not self.offline_agent:
+            return "❌ No offline learning session active. Use 'offline' command to start."
+        
+        return self.offline_agent.handle_command(user_input)
+    
     async def start_triage_phase(self):
         """Start with triage agent to assess student needs using hybrid system"""
         self.current_agent = self.triage_agent
         
-        # Try to connect to local MCP server (optional)
-        try:
-            await asyncio.wait_for(self.local_server.connect(), timeout=5.0)
-            self.triage_agent.mcp_servers = [self.local_server]
-            print("✅ Connected to local MCP server")
-        except asyncio.TimeoutError:
-            print("⚠️ Connection timeout to local MCP server")
-            print("🔄 Continuing without MCP server...")
-            self.triage_agent.mcp_servers = []
-        except Exception as e:
-            print(f"⚠️ Could not connect to local MCP server: {e}")
-            print("🔄 Continuing without MCP server...")
-            self.triage_agent.mcp_servers = []
+        # Disable MCP servers for triage agent to avoid ID conflicts
+        print("⚠️ MCP servers disabled for triage agent to avoid ID conflicts")
+        self.triage_agent.mcp_servers = []
         
-        # Use hybrid system for initial greeting
-        print("🔄 Using hybrid system for triage phase...")
+        # Use triage agent for proper greeting and assessment
+        print("🔄 Starting triage phase with Olivia...")
         print("\nOlivia: ", end="", flush=True)
-        response = await self.get_hybrid_response("Hello! I'm Olivia, your AI teaching assistant. I'm here to help assess your learning needs and connect you with the perfect tutor. What's your name?", "Olivia")
-        print("\n")
+        
+        # Use the actual triage agent instead of generic hybrid response
+        try:
+            # Use the triage agent with the existing session
+            result = await Runner.run(
+                self.triage_agent,
+                "Hello! I'm a new student. Please help me get started with my learning assessment.",
+                session=self.session
+            )
+            
+            # Print the response
+            print(result.final_output)
+            print("\n")
+            
+        except Exception as e:
+            print(f"⚠️ Triage agent error: {e}")
+            # Fallback to hybrid system
+            response = await self.get_hybrid_response("Hello! I'm Olivia, your AI teaching assistant. I'm here to help assess your learning needs and connect you with the perfect tutor. What's your name?", "Olivia")
+            print("\n")
         
         while True:
             user_input = input("You: ")
             if user_input.lower() == "exit":
                 return False
+            elif user_input.lower().startswith("generate pack") or user_input.lower().startswith("generate_pack"):
+                # Generate learning pack for next day
+                print("📚 Generating learning pack for next day...")
+                await self.generate_learning_pack(user_input=user_input)
+                continue
+            elif user_input.lower() == "offline":
+                # Start offline learning session
+                offline_response = self.start_offline_learning()
+                print(f"\n{offline_response}\n")
+                
+                # Handle offline learning commands
+                while True:
+                    offline_input = input("Offline> ")
+                    if offline_input.lower() == "back":
+                        break
+                    elif offline_input.lower() == "exit":
+                        return False
+                    else:
+                        offline_response = self.handle_offline_command(offline_input)
+                        print(f"\n{offline_response}\n")
+                continue
             
-            # Use hybrid system for responses
+            # Use triage agent for proper assessment
             print("Olivia: ", end="", flush=True)
-            response = await self.get_hybrid_response(user_input, "Olivia")
-            print("\n")
+            try:
+                # Use the triage agent with existing session
+                result = await Runner.run(
+                    self.triage_agent,
+                    user_input,
+                    session=self.session
+                )
+                
+                # Print the response
+                print(result.final_output)
+                print("\n")
+                response = result.final_output
+                
+            except Exception as e:
+                print(f"⚠️ Triage agent error: {e}")
+                # Fallback to hybrid system
+                response = await self.get_hybrid_response(user_input, "Olivia")
+                print("\n")
             
             if "handoff" in response.lower() or "tutor" in response.lower():
                 return True
@@ -482,27 +618,31 @@ class MultiAgentOrchestrator:
         """Start the main tutoring phase using hybrid system"""
         self.current_agent = self.tutor_agent
         
-        # Try to connect to all MCP servers (optional)
-        connected_servers = []
-        for server in self.mcp_servers:
-            try:
-                # Add timeout to prevent hanging
-                await asyncio.wait_for(server.connect(), timeout=5.0)
-                connected_servers.append(server)
-                print(f"✅ Connected to {server.name}")
-            except asyncio.TimeoutError:
-                print(f"⚠️ Connection timeout to {server.name}")
-            except Exception as e:
-                print(f"⚠️ Could not connect to {server.name}: {e}")
+        # Disable MCP servers for tutor agent to avoid ID conflicts
+        print("⚠️ MCP servers disabled for tutor agent to avoid ID conflicts")
+        self.tutor_agent.mcp_servers = []
         
-        # Set connected servers to tutor agent
-        self.tutor_agent.mcp_servers = connected_servers
-        
-        # Use hybrid system for tutoring
-        print("🔄 Using hybrid system for tutoring phase...")
+        # Use tutor agent for proper teaching with curriculum content
+        print("🔄 Starting tutoring phase with curriculum content...")
         print("\nTutor: ", end="", flush=True)
-        response = await self.get_hybrid_response("Hello! I'm your AI tutor. I'm ready to help you learn with personalized teaching methods. I have access to web search, PDF content, and assessment tools. What would you like to learn about today?", "Tutor")
-        print("\n")
+        
+        # Use the tutor agent with curriculum content
+        try:
+            result = await Runner.run(
+                self.tutor_agent,
+                "Hello! I'm your AI tutor. I'm ready to help you learn with personalized teaching methods. I have access to the official Grade 7 curriculum, web search, and assessment tools. What would you like to learn about today?",
+                session=self.session
+            )
+            
+            # Print the response
+            print(result.final_output)
+            print("\n")
+            
+        except Exception as e:
+            print(f"⚠️ Tutor agent error: {e}")
+            # Fallback to hybrid system
+            response = await self.get_hybrid_response("Hello! I'm your AI tutor. I'm ready to help you learn with personalized teaching methods. I have access to web search, PDF content, and assessment tools. What would you like to learn about today?", "Tutor")
+            print("\n")
         
         while True:
             user_input = input("You: ")
@@ -511,18 +651,71 @@ class MultiAgentOrchestrator:
             elif user_input.lower() == "feedback":
                 await self.handoff_to_feedback()
                 continue
+            elif user_input.lower().startswith("generate pack") or user_input.lower().startswith("generate_pack"):
+                # Generate learning pack for next day
+                print("📚 Generating learning pack for next day...")
+                await self.generate_learning_pack(user_input=user_input)
+                continue
+            elif user_input.lower() == "offline":
+                # Start offline learning session
+                offline_response = self.start_offline_learning()
+                print(f"\n{offline_response}\n")
+                
+                # Handle offline learning commands
+                while True:
+                    offline_input = input("Offline> ")
+                    if offline_input.lower() == "back":
+                        break
+                    elif offline_input.lower() == "exit":
+                        return False
+                    else:
+                        offline_response = self.handle_offline_command(offline_input)
+                        print(f"\n{offline_response}\n")
+                continue
             else:
-                # Use hybrid system for tutoring responses
+                # Use tutor agent for proper teaching with book content
                 print("Tutor: ", end="", flush=True)
-                response = await self.get_hybrid_response(user_input, "Tutor")
-                print("\n")
+                try:
+                    # Use the tutor agent with existing session (MCP servers already disabled)
+                    result = await Runner.run(
+                        self.tutor_agent,
+                        user_input,
+                        session=self.session
+                    )
+                    
+                    # Print the response
+                    print(result.final_output)
+                    print("\n")
+                    response = result.final_output
+                    
+                except Exception as e:
+                    print(f"⚠️ Tutor agent error: {e}")
+                    # Fallback to hybrid system
+                    response = await self.get_hybrid_response(user_input, "Tutor")
+                    print("\n")
     
     async def handoff_to_feedback(self):
         """Handoff to Feedback Agent for progress review using hybrid system"""
         print("🔄 Using hybrid system for feedback...")
         print("\nFeedback Agent: ", end="", flush=True)
-        response = await self.get_hybrid_response("Please provide feedback on my learning progress. Give me encouragement and suggestions for improvement.", "Feedback Agent")
-        print("\n")
+        try:
+            # Use the feedback agent with existing session
+            result = await Runner.run(
+                self.feedback_agent,
+                "Please provide feedback on my learning progress. Give me encouragement and suggestions for improvement.",
+                session=self.session
+            )
+            
+            # Print the response
+            print(result.final_output)
+            print("\n")
+            response = result.final_output
+            
+        except Exception as e:
+            print(f"⚠️ Feedback agent error: {e}")
+            # Fallback to hybrid system
+            response = await self.get_hybrid_response("Please provide feedback on my learning progress. Give me encouragement and suggestions for improvement.", "Feedback Agent")
+            print("\n")
     
     async def run(self):
         """Run the complete multi-agent system"""
@@ -540,15 +733,18 @@ class MultiAgentOrchestrator:
                 # Clean up MCP server connections
                 try:
                     for server in self.mcp_servers:
-                        if hasattr(server, 'disconnect'):
-                            await server.disconnect()
+                        try:
+                            if hasattr(server, 'disconnect'):
+                                await asyncio.wait_for(server.disconnect(), timeout=1.0)
+                        except Exception:
+                            pass  # Ignore individual server cleanup errors
                 except Exception:
                     pass  # Ignore cleanup errors
 
 async def main():
-    """Main entry point with hybrid system and degrade mode"""
-    print("🎓 AI Tutor System with Hybrid OpenAI/Ollama Fallback + Degrade Mode")
-    print("=" * 70)
+    """Main entry point with hybrid system, degrade mode, and learning packs"""
+    print("🎓 AI Tutor System with Hybrid OpenAI/Ollama Fallback + Degrade Mode + Learning Packs")
+    print("=" * 80)
     print(f"🔄 Hybrid System Status: {'OpenAI Primary' if hybrid_agent.use_openai else 'Ollama Local'}")
     
     # Check initial network status (force check)
@@ -561,7 +757,12 @@ async def main():
         print(f"🌐 Network Status: Good ({speed_mbps:.1f} Mbps) - OpenAI Full quality mode")
     
     print(f"⚙️ Degrade Threshold: {DEGRADE_THRESHOLD_MBPS} Mbps")
-    print("=" * 70)
+    print("📚 Learning Pack System: Ready for offline study")
+    print("=" * 80)
+    print("💡 New Commands Available:")
+    print("   • 'generate_pack' - Create learning pack for next day")
+    print("   • 'offline' - Start offline learning session")
+    print("=" * 80)
     
     orchestrator = MultiAgentOrchestrator()
     await orchestrator.run()

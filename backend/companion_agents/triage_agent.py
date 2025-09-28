@@ -40,7 +40,7 @@ def create_triage_agent():
     return Agent(
         name="Olivia", 
         instructions=Triage_Agent_Prompt,
-        model=model,
+        model=None,  # Will be set by orchestrator
         model_settings=ModelSettings(temperature=0.7),
     )
 

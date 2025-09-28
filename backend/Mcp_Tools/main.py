@@ -185,8 +185,8 @@ def register_pdf_tool(agent: Any, pdf_path: str, tool_name: str) -> str:
     return tool_name
 
 PDF_PATHS: Dict[str, str] = {
-    "computer7": r"P:\\Hackthon teacher Agent\\Mcp_Tools\\Computer 7 SNC 2023-24 (1).pdf",
-    "english7": r"P:\\Hackthon teacher Agent\\Mcp_Tools\\English 7 SNC 2023-24.pdf",
+    "computer7": r"backend/Mcp_Tools/Computer 7 SNC 2023-24 (1).pdf",
+    "english7": r"backend/Mcp_Tools/English 7 SNC 2023-24.pdf",
 }
 
 try:

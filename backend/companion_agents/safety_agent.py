@@ -31,7 +31,7 @@ def create_safety_agent():
     return Agent(
         name="SafetyAgent",
         instructions=Safety_Agent_Prompt,
-        model=model,
+        model=None,  # Will be set by orchestrator
         model_settings=ModelSettings(temperature=0),
     )
 
